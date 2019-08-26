@@ -57,7 +57,7 @@ class COCOeval:
     # Data, paper, and tutorials available at:  http://mscoco.org/
     # Code written by Piotr Dollar and Tsung-Yi Lin, 2015.
     # Licensed under the Simplified BSD License [see coco/license.txt]
-    def __init__(self, cocoGt=None, cocoDt=None, iouType='segm'):
+    def __init__(self, cocoGt=None, cocoDt=None, iouType='segm', kpt_oks_sigmas=None):
         '''
         Initialize CocoEval using coco APIs for gt and dt
         :param cocoGt: coco object with ground truth annotations
@@ -72,7 +72,13 @@ class COCOeval:
         self.eval     = {}                  # accumulated evaluation results
         self._gts = defaultdict(list)       # gt for evaluation
         self._dts = defaultdict(list)       # dt for evaluation
-        self.params = Params(iouType=iouType) # parameters
+
+        if kpt_oks_sigmas is None:
+            self.params = Params(iouType=iouType) # parameters
+        else:
+            self.params = CustomDatasetParams(iouType=iouType, 
+                                              kpt_oks_sigmas=kpt_oks_sigmas) # parameters for a custom dataset
+
         self._paramsEval = {}               # parameters for evaluation
         self.stats = []                     # result summarization
         self.ious = {}                      # ious between all gts and dts
@@ -532,3 +538,11 @@ class Params:
         self.iouType = iouType
         # useSegm is deprecated
         self.useSegm = None
+
+class CustomDatasetParams(Params):
+    def __init__(self, iouType='segm', kpt_oks_sigmas=None):
+        super(CustomDatasetParams, self).__init__(iouType=iouType)
+
+        if iouType == 'keypoints':
+            self.kpt_oks_sigmas = kpt_oks_sigmas
+
