@@ -76,6 +76,7 @@ class COCOeval:
         self._paramsEval = {}               # parameters for evaluation
         self.stats = []                     # result summarization
         self.ious = {}                      # ious between all gts and dts
+        self.dists = {}                     # distances between all gts and dts
         if not cocoGt is None:
             self.params.imgIds = sorted(cocoGt.getImgIds())
             self.params.catIds = sorted(cocoGt.getCatIds())
@@ -142,12 +143,15 @@ class COCOeval:
         catIds = p.catIds if p.useCats else [-1]
 
         if p.iouType == 'segm' or p.iouType == 'bbox':
-            computeIoU = self.computeIoU
+            self.ious = {(imgId, catId): self.computeIoU(imgId, catId) \
+                            for imgId in p.imgIds
+                            for catId in catIds}
         elif p.iouType == 'keypoints':
-            computeIoU = self.computeOks
-        self.ious = {(imgId, catId): computeIoU(imgId, catId) \
-                        for imgId in p.imgIds
-                        for catId in catIds}
+            for catId in catIds:
+                for imgId in p.imgIds:
+                    iou, dist = self.computeOks(imgId, catId)
+                    self.ious[(imgId, catId)] = iou
+                    self.dists[(imgId, catId)] = dist
 
         evaluateImg = self.evaluateImg
         maxDet = p.maxDets[-1]
@@ -201,7 +205,8 @@ class COCOeval:
         # if len(gts) == 0 and len(dts) == 0:
         if len(gts) == 0 or len(dts) == 0:
             return []
-        ious = np.zeros((len(dts), len(gts)))
+        ious = np.zeros((len(dts), len(gts))) # Store all OKSs
+        distances = np.zeros((len(dts), len(gts))) # Store all distances
         sigmas = p.kpt_oks_sigmas
         vars = (sigmas * 2)**2
         k = len(sigmas)
@@ -230,7 +235,8 @@ class COCOeval:
                 if k1 > 0:
                     e=e[vg > 0]
                 ious[i, j] = np.sum(np.exp(-e)) / e.shape[0]
-        return ious
+                distances[i, j] = (dx**2 + dy**2) / e.shape[0]
+        return ious, distances
 
     def evaluateImg(self, imgId, catId, aRng, maxDet):
         '''
