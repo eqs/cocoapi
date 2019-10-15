@@ -264,8 +264,9 @@ class COCOeval:
         dtind = np.argsort([-d['score'] for d in dt], kind='mergesort')
         dt = [dt[i] for i in dtind[0:maxDet]]
         iscrowd = [int(o['iscrowd']) for o in gt]
-        # load computed ious
+        # load computed ious and distances
         ious = self.ious[imgId, catId][:, gtind] if len(self.ious[imgId, catId]) > 0 else self.ious[imgId, catId]
+        # dists = self.dists[imgId, catId][:, gtind] if len(self.ious[imgId, catId]) > 0 else self.dists[imgId, catId]
 
         T = len(p.iouThrs)
         G = len(gt)
@@ -423,6 +424,15 @@ class COCOeval:
         }
         toc = time.time()
         print('DONE (t={:0.2f}s).'.format( toc-tic))
+
+    def accumulate_distance(self, p=None):
+        '''
+        Accumulate per image evaluation results
+        and store the result in self.eval_dist
+        :param p: input params for evaluation
+        :return: None
+        '''
+        pass
 
     def summarize(self):
         '''
