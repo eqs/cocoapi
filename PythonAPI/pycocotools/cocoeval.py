@@ -203,7 +203,7 @@ class COCOeval:
             dts = dts[0:p.maxDets[-1]]
         # if len(gts) == 0 and len(dts) == 0:
         if len(gts) == 0 or len(dts) == 0:
-            return []
+            return [], []
         ious = np.zeros((len(dts), len(gts))) # Store all OKSs
         distances = np.zeros((len(dts), len(gts))) # Store all distances
         sigmas = p.kpt_oks_sigmas
