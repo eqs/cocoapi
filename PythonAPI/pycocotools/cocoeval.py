@@ -234,7 +234,7 @@ class COCOeval:
                 if k1 > 0:
                     e=e[vg > 0]
                 ious[i, j] = np.sum(np.exp(-e)) / e.shape[0]
-                distances[i, j] = (dx**2 + dy**2) / e.shape[0]
+                distances[i, j] = np.sum(dx**2 + dy**2) / e.shape[0]
         return ious, distances
 
     def evaluateImg(self, imgId, catId, aRng, maxDet):
