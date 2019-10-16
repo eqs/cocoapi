@@ -283,6 +283,8 @@ class COCOeval:
                 for dind, d in enumerate(dt):
                     # information about best match so far (m=-1 -> unmatched)
                     iou = min([t,1-1e-10])
+                    if p.iouType == 'keypoints':
+                        dist = -1.0
                     m   = -1
                     for gind, g in enumerate(gt):
                         # if this gt already matched, and not a crowd, continue
@@ -296,6 +298,8 @@ class COCOeval:
                             continue
                         # if match successful and best so far, store appropriately
                         iou=ious[dind,gind]
+                        if p.iouType == 'keypoints':
+                            dist = dists[dind, gind]
                         m=gind
                     # if match made store id of match for both dt and gt
                     if m ==-1:
@@ -306,7 +310,7 @@ class COCOeval:
                     gtm[tind,m]     = d['id']
 
                     if p.iouType == 'keypoints':
-                        dtdist[tind,dind]  = dists[dind, gind]
+                        dtdist[tind,dind]  = dist
 
         # set unmatched detections outside of area range to ignore
         a = np.array([d['area']<aRng[0] or d['area']>aRng[1] for d in dt]).reshape((1, len(dt)))
