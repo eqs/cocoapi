@@ -230,11 +230,17 @@ class COCOeval:
                     z = np.zeros((k))
                     dx = np.max((z, x0-xd),axis=0)+np.max((z, xd-x1),axis=0)
                     dy = np.max((z, y0-yd),axis=0)+np.max((z, yd-y1),axis=0)
+
                 e = (dx**2 + dy**2) / vars / (gt['area']+np.spacing(1)) / 2
+                dist = np.sqrt(dx**2 + dy**2)
+
                 if k1 > 0:
-                    e=e[vg > 0]
+                    e = e[vg > 0]
+                    dist = dist[vg > 0]
+
                 ious[i, j] = np.sum(np.exp(-e)) / e.shape[0]
-                distances[i, j] = np.sum(dx**2 + dy**2) / e.shape[0]
+                distances[i, j] = np.sum(dist) / e.shape[0]
+
         return ious, distances
 
     def evaluateImg(self, imgId, catId, aRng, maxDet):
