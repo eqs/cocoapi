@@ -535,6 +535,14 @@ class COCOeval:
         elif self.params.iouType == 'keypoints':
             self.stats = _summarizeKps()
 
+    def summarize_distances(self):
+        print('The mean over all categories ---------------------------------------------------')
+        # Compute the mean over all categories
+        print(self.eval['averaged_distances'].mean(axis=1))
+        print('The mean over all categories and IoU (OKS) thresholds --------------------------')
+        # Compute the mean over all categories and IoU (OKS) thresholds
+        print(self.eval['averaged_distances'].mean(axis=1).mean(axis=0))
+
     def __str__(self):
         self.summarize()
 
