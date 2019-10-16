@@ -359,6 +359,7 @@ class COCOeval:
         precision   = -np.ones((T,R,K,A,M)) # -1 for the precision of absent categories
         recall      = -np.ones((T,K,A,M))
         scores      = -np.ones((T,R,K,A,M))
+        averaged_distances = -np.ones((T,K,A,M))
 
         # create dictionary for future indexing
         _pe = self._paramsEval
@@ -392,6 +393,8 @@ class COCOeval:
                     dtScoresSorted = dtScores[inds]
 
                     dtm  = np.concatenate([e['dtMatches'][:,0:maxDet] for e in E], axis=1)[:,inds]
+                    dist_m = np.concatenate([e['distMatches'][:, 0:maxDet] for e in E], axis=1)[:, inds]
+
                     dtIg = np.concatenate([e['dtIgnore'][:,0:maxDet]  for e in E], axis=1)[:,inds]
                     gtIg = np.concatenate([e['gtIgnore'] for e in E])
                     npig = np.count_nonzero(gtIg==0 )
@@ -399,6 +402,11 @@ class COCOeval:
                         continue
                     tps = np.logical_and(               dtm,  np.logical_not(dtIg) )
                     fps = np.logical_and(np.logical_not(dtm), np.logical_not(dtIg) )
+
+                    # Weights to ignore False Positive detections
+                    dist_weight = np.int32(tps) + np.spacing(1)
+                    # Averaged distances for all True Positives
+                    averaged_distances[:, k, a, m] = np.average(dist_m, axis=1, weights=dist_weight)
 
                     tp_sum = np.cumsum(tps, axis=1).astype(dtype=np.float)
                     fp_sum = np.cumsum(fps, axis=1).astype(dtype=np.float)
@@ -440,6 +448,7 @@ class COCOeval:
             'precision': precision,
             'recall':   recall,
             'scores': scores,
+            'averaged_distances': averaged_distances,
         }
         toc = time.time()
         print('DONE (t={:0.2f}s).'.format( toc-tic))
