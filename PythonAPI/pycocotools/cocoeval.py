@@ -266,15 +266,18 @@ class COCOeval:
         iscrowd = [int(o['iscrowd']) for o in gt]
         # load computed ious and distances
         ious = self.ious[imgId, catId][:, gtind] if len(self.ious[imgId, catId]) > 0 else self.ious[imgId, catId]
-        # dists = self.dists[imgId, catId][:, gtind] if len(self.ious[imgId, catId]) > 0 else self.dists[imgId, catId]
+        if p.iouType == 'keypoints':
+            dists = self.dists[imgId, catId][:, gtind] if len(self.ious[imgId, catId]) > 0 else self.dists[imgId, catId]
 
         T = len(p.iouThrs)
         G = len(gt)
         D = len(dt)
         gtm  = np.zeros((T,G))
         dtm  = np.zeros((T,D))
+        dtdist = -1 * np.ones((T,D)) # To store distances btw gt and dt
         gtIg = np.array([g['_ignore'] for g in gt])
         dtIg = np.zeros((T,D))
+
         if not len(ious)==0:
             for tind, t in enumerate(p.iouThrs):
                 for dind, d in enumerate(dt):
@@ -297,9 +300,14 @@ class COCOeval:
                     # if match made store id of match for both dt and gt
                     if m ==-1:
                         continue
+
                     dtIg[tind,dind] = gtIg[m]
                     dtm[tind,dind]  = gt[m]['id']
                     gtm[tind,m]     = d['id']
+
+                    if p.iouType == 'keypoints':
+                        dtdist[tind,dind]  = dists[dind, gind]
+
         # set unmatched detections outside of area range to ignore
         a = np.array([d['area']<aRng[0] or d['area']>aRng[1] for d in dt]).reshape((1, len(dt)))
         dtIg = np.logical_or(dtIg, np.logical_and(dtm==0, np.repeat(a,T,0)))
@@ -313,6 +321,7 @@ class COCOeval:
                 'gtIds':        [g['id'] for g in gt],
                 'dtMatches':    dtm,
                 'gtMatches':    gtm,
+                'distMatches':  dtdist,
                 'dtScores':     [d['score'] for d in dt],
                 'gtIgnore':     gtIg,
                 'dtIgnore':     dtIg,
