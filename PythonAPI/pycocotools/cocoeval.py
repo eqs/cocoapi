@@ -76,6 +76,7 @@ class COCOeval:
         self._paramsEval = {}               # parameters for evaluation
         self.stats = []                     # result summarization
         self.ious = {}                      # ious between all gts and dts
+        self.dists = {}                     # distances between all gts and dts
         if not cocoGt is None:
             self.params.imgIds = sorted(cocoGt.getImgIds())
             self.params.catIds = sorted(cocoGt.getCatIds())
@@ -142,16 +143,18 @@ class COCOeval:
         catIds = p.catIds if p.useCats else [-1]
 
         if p.iouType == 'segm' or p.iouType == 'bbox':
-            computeIoU = self.computeIoU
+            self.ious = {(imgId, catId): self.computeIoU(imgId, catId) \
+                            for imgId in p.imgIds
+                            for catId in catIds}
         elif p.iouType == 'keypoints':
-            computeIoU = self.computeOks
-        self.ious = {(imgId, catId): computeIoU(imgId, catId) \
-                        for imgId in p.imgIds
-                        for catId in catIds}
+            for catId in catIds:
+                for imgId in p.imgIds:
+                    iou, dist = self.computeOks(imgId, catId)
+                    self.ious[(imgId, catId)] = iou
+                    self.dists[(imgId, catId)] = dist
 
-        evaluateImg = self.evaluateImg
         maxDet = p.maxDets[-1]
-        self.evalImgs = [evaluateImg(imgId, catId, areaRng, maxDet)
+        self.evalImgs = [self.evaluateImg(imgId, catId, areaRng, maxDet)
                  for catId in catIds
                  for areaRng in p.areaRng
                  for imgId in p.imgIds
@@ -200,8 +203,9 @@ class COCOeval:
             dts = dts[0:p.maxDets[-1]]
         # if len(gts) == 0 and len(dts) == 0:
         if len(gts) == 0 or len(dts) == 0:
-            return []
-        ious = np.zeros((len(dts), len(gts)))
+            return [], []
+        ious = np.zeros((len(dts), len(gts))) # Store all OKSs
+        distances = np.zeros((len(dts), len(gts))) # Store all distances
         sigmas = p.kpt_oks_sigmas
         vars = (sigmas * 2)**2
         k = len(sigmas)
@@ -226,11 +230,18 @@ class COCOeval:
                     z = np.zeros((k))
                     dx = np.max((z, x0-xd),axis=0)+np.max((z, xd-x1),axis=0)
                     dy = np.max((z, y0-yd),axis=0)+np.max((z, yd-y1),axis=0)
+
                 e = (dx**2 + dy**2) / vars / (gt['area']+np.spacing(1)) / 2
+                dist = np.sqrt(dx**2 + dy**2)
+
                 if k1 > 0:
-                    e=e[vg > 0]
+                    e = e[vg > 0]
+                    dist = dist[vg > 0]
+
                 ious[i, j] = np.sum(np.exp(-e)) / e.shape[0]
-        return ious
+                distances[i, j] = np.sum(dist) / e.shape[0]
+
+        return ious, distances
 
     def evaluateImg(self, imgId, catId, aRng, maxDet):
         '''
@@ -259,21 +270,27 @@ class COCOeval:
         dtind = np.argsort([-d['score'] for d in dt], kind='mergesort')
         dt = [dt[i] for i in dtind[0:maxDet]]
         iscrowd = [int(o['iscrowd']) for o in gt]
-        # load computed ious
+        # load computed ious and distances
         ious = self.ious[imgId, catId][:, gtind] if len(self.ious[imgId, catId]) > 0 else self.ious[imgId, catId]
+        if p.iouType == 'keypoints':
+            dists = self.dists[imgId, catId][:, gtind] if len(self.ious[imgId, catId]) > 0 else self.dists[imgId, catId]
 
         T = len(p.iouThrs)
         G = len(gt)
         D = len(dt)
         gtm  = np.zeros((T,G))
         dtm  = np.zeros((T,D))
+        dtdist = -1 * np.ones((T,D)) # To store distances btw gt and dt
         gtIg = np.array([g['_ignore'] for g in gt])
         dtIg = np.zeros((T,D))
+
         if not len(ious)==0:
             for tind, t in enumerate(p.iouThrs):
                 for dind, d in enumerate(dt):
                     # information about best match so far (m=-1 -> unmatched)
                     iou = min([t,1-1e-10])
+                    if p.iouType == 'keypoints':
+                        dist = -1.0
                     m   = -1
                     for gind, g in enumerate(gt):
                         # if this gt already matched, and not a crowd, continue
@@ -287,13 +304,20 @@ class COCOeval:
                             continue
                         # if match successful and best so far, store appropriately
                         iou=ious[dind,gind]
+                        if p.iouType == 'keypoints':
+                            dist = dists[dind, gind]
                         m=gind
                     # if match made store id of match for both dt and gt
                     if m ==-1:
                         continue
+
                     dtIg[tind,dind] = gtIg[m]
                     dtm[tind,dind]  = gt[m]['id']
                     gtm[tind,m]     = d['id']
+
+                    if p.iouType == 'keypoints':
+                        dtdist[tind,dind]  = dist
+
         # set unmatched detections outside of area range to ignore
         a = np.array([d['area']<aRng[0] or d['area']>aRng[1] for d in dt]).reshape((1, len(dt)))
         dtIg = np.logical_or(dtIg, np.logical_and(dtm==0, np.repeat(a,T,0)))
@@ -307,6 +331,7 @@ class COCOeval:
                 'gtIds':        [g['id'] for g in gt],
                 'dtMatches':    dtm,
                 'gtMatches':    gtm,
+                'distMatches':  dtdist,
                 'dtScores':     [d['score'] for d in dt],
                 'gtIgnore':     gtIg,
                 'dtIgnore':     dtIg,
@@ -334,6 +359,7 @@ class COCOeval:
         precision   = -np.ones((T,R,K,A,M)) # -1 for the precision of absent categories
         recall      = -np.ones((T,K,A,M))
         scores      = -np.ones((T,R,K,A,M))
+        averaged_distances = -np.ones((T,K,A,M))
 
         # create dictionary for future indexing
         _pe = self._paramsEval
@@ -367,6 +393,8 @@ class COCOeval:
                     dtScoresSorted = dtScores[inds]
 
                     dtm  = np.concatenate([e['dtMatches'][:,0:maxDet] for e in E], axis=1)[:,inds]
+                    dist_m = np.concatenate([e['distMatches'][:, 0:maxDet] for e in E], axis=1)[:, inds]
+
                     dtIg = np.concatenate([e['dtIgnore'][:,0:maxDet]  for e in E], axis=1)[:,inds]
                     gtIg = np.concatenate([e['gtIgnore'] for e in E])
                     npig = np.count_nonzero(gtIg==0 )
@@ -374,6 +402,11 @@ class COCOeval:
                         continue
                     tps = np.logical_and(               dtm,  np.logical_not(dtIg) )
                     fps = np.logical_and(np.logical_not(dtm), np.logical_not(dtIg) )
+
+                    # Weights to ignore False Positive detections
+                    dist_weight = np.int32(tps) + np.spacing(1)
+                    # Averaged distances for all True Positives
+                    averaged_distances[:, k, a, m] = np.average(dist_m, axis=1, weights=dist_weight)
 
                     tp_sum = np.cumsum(tps, axis=1).astype(dtype=np.float)
                     fp_sum = np.cumsum(fps, axis=1).astype(dtype=np.float)
@@ -415,6 +448,7 @@ class COCOeval:
             'precision': precision,
             'recall':   recall,
             'scores': scores,
+            'averaged_distances': averaged_distances,
         }
         toc = time.time()
         print('DONE (t={:0.2f}s).'.format( toc-tic))
@@ -483,14 +517,22 @@ class COCOeval:
             stats[8] = _summarize(0, maxDets=20, areaRng='medium')
             stats[9] = _summarize(0, maxDets=20, areaRng='large')
             return stats
+
         if not self.eval:
             raise Exception('Please run accumulate() first')
-        iouType = self.params.iouType
-        if iouType == 'segm' or iouType == 'bbox':
-            summarize = _summarizeDets
-        elif iouType == 'keypoints':
-            summarize = _summarizeKps
-        self.stats = summarize()
+
+        if self.params.iouType == 'segm' or self.params.iouType == 'bbox':
+            self.stats = _summarizeDets()
+        elif self.params.iouType == 'keypoints':
+            self.stats = _summarizeKps()
+
+    def summarize_distances(self):
+        print('The mean over all categories ---------------------------------------------------')
+        # Compute the mean over all categories
+        print(self.eval['averaged_distances'].mean(axis=1))
+        print('The mean over all categories and IoU (OKS) thresholds --------------------------')
+        # Compute the mean over all categories and IoU (OKS) thresholds
+        print(self.eval['averaged_distances'].mean(axis=1).mean(axis=0))
 
     def __str__(self):
         self.summarize()
