@@ -453,15 +453,6 @@ class COCOeval:
         toc = time.time()
         print('DONE (t={:0.2f}s).'.format( toc-tic))
 
-    def accumulate_distance(self, p=None):
-        '''
-        Accumulate per image evaluation results
-        and store the result in self.eval_dist
-        :param p: input params for evaluation
-        :return: None
-        '''
-        pass
-
     def summarize(self):
         '''
         Compute and display summary metrics for evaluation results.
