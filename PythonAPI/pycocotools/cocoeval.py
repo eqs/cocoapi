@@ -526,14 +526,14 @@ class COCOeval:
             stats[8] = _summarize(0, maxDets=20, areaRng='medium')
             stats[9] = _summarize(0, maxDets=20, areaRng='large')
             return stats
+
         if not self.eval:
             raise Exception('Please run accumulate() first')
-        iouType = self.params.iouType
-        if iouType == 'segm' or iouType == 'bbox':
-            summarize = _summarizeDets
-        elif iouType == 'keypoints':
-            summarize = _summarizeKps
-        self.stats = summarize()
+
+        if self.params.iouType == 'segm' or self.params.iouType == 'bbox':
+            self.stats = _summarizeDets()
+        elif self.params.iouType == 'keypoints':
+            self.stats = _summarizeKps()
 
     def __str__(self):
         self.summarize()
